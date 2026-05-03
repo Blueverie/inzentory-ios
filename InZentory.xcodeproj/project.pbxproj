@@ -29,9 +29,22 @@
 		6B63E4302F5FD3FD0073AEE1 /* InZentoryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = InZentoryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		6BD8C2452F7301DF007631FA /* Exceptions for "InZentory" folder in "InZentory" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6B63E4162F5FD3F90073AEE1 /* InZentory */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6B63E4192F5FD3F90073AEE1 /* InZentory */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6BD8C2452F7301DF007631FA /* Exceptions for "InZentory" folder in "InZentory" target */,
+			);
 			path = InZentory;
 			sourceTree = "<group>";
 		};
@@ -398,6 +411,9 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = InZentory/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "InZentory uses the camera to scan barcodes.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "InZentory uses Face ID to quickly authenticate you on launch.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -442,6 +458,9 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = InZentory/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "InZentory uses the camera to scan barcodes.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "InZentory uses Face ID to quickly authenticate you on launch.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
