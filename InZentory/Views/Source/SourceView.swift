@@ -60,6 +60,17 @@ struct SourceView: View {
                 Text("Open New Source")
             }
 
+            // MARK: Error banner
+            if let err = sourcesService.lastError {
+                Section {
+                    Label(err, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                } header: {
+                    Text("Sync Error")
+                }
+            }
+
             // MARK: Currently open sources
             let openSources = sourcesService.openSources
             if !openSources.isEmpty {
@@ -91,7 +102,7 @@ struct SourceView: View {
         }
         .navigationTitle("Source")
         .refreshable { await sourcesService.refresh() }
-        .task { if sourcesService.sources.isEmpty { await sourcesService.refresh() } }
+        .onAppear { Task { await sourcesService.refresh() } }
         .navigationDestination(for: Int.self) { id in
             SourceDetailView(sourceId: id)
         }

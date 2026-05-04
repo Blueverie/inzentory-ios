@@ -25,7 +25,7 @@ enum SourceKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .itemized: return "list.bullet.rectangle"
         case .bulk:     return "shippingbox.fill"
-        case .auction:  return "gavel"
+        case .auction:  return "hammer"
         }
     }
 }
