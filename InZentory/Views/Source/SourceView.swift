@@ -47,18 +47,20 @@ struct SourceView: View {
                 Text("Scout")
             }
 
-            // MARK: Manage Sources
+            // MARK: Open New Source
             Section {
                 ForEach(SourceKind.allCases) { kind in
-                    NavigationLink(destination: SourceKindActionsView(kind: kind, onOpenNew: { newSourceKind = kind })) {
-                        Label(kind.displayName, systemImage: kind.icon)
+                    Button {
+                        newSourceKind = kind
+                    } label: {
+                        Label("Open \(kind.displayName)", systemImage: kind.icon)
                     }
                 }
             } header: {
-                Text("Manage Sources")
+                Text("Open New Source")
             }
 
-            // MARK: Currently open sources (quick access)
+            // MARK: Currently open sources
             let openSources = sourcesService.openSources
             if !openSources.isEmpty {
                 Section {
@@ -110,44 +112,5 @@ struct SourceView: View {
         let f = NumberFormatter()
         f.numberStyle = .currency
         return f.string(from: NSNumber(value: v)) ?? String(format: "$%.2f", v)
-    }
-}
-
-/// Shown after tapping a kind ("Itemized", "Bulk", "Auction") in the Manage Sources section.
-/// Offers New / Resume / Close actions for that kind.
-private struct SourceKindActionsView: View {
-    let kind: SourceKind
-    var onOpenNew: () -> Void
-
-    var body: some View {
-        List {
-            Section {
-                Button {
-                    onOpenNew()
-                } label: {
-                    Label("Open New \(kind.displayName)", systemImage: "plus.circle.fill")
-                }
-                NavigationLink {
-                    SourceListView(kind: kind, state: .open)
-                } label: {
-                    Label("Resume Existing", systemImage: "arrow.uturn.forward.circle")
-                }
-                NavigationLink {
-                    SourceListView(kind: kind, state: .open)
-                } label: {
-                    Label("Close a Source", systemImage: "lock.circle")
-                }
-            }
-
-            Section {
-                NavigationLink {
-                    SourceListView(kind: kind, state: .closed)
-                } label: {
-                    Label("Closed \(kind.displayName) Sources", systemImage: "archivebox")
-                }
-            }
-        }
-        .navigationTitle(kind.displayName)
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
