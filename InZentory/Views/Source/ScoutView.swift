@@ -40,6 +40,8 @@ struct ScoutView: View {
     @State private var history: [ScoutScanRecord] = []
     @State private var showHistory  = false
     @State private var showSettings = false
+    @State private var showTitleSearch = false
+    @State private var titleSearchCache: TitleSearchResults? = nil
 
     // Barcode field
     @State private var barcodeText  = ""
@@ -103,6 +105,11 @@ struct ScoutView: View {
         .sheet(isPresented: $showSettings) {
             NavigationStack { ScoutSettingsView() }
         }
+        .sheet(isPresented: $showTitleSearch) {
+            TitleSearchSheet(cached: $titleSearchCache) { asin in
+                Task { await lookup(asin, fromTitleSearch: true) }
+            }
+        }
     }
 
     // MARK: - Top bar
@@ -141,6 +148,15 @@ struct ScoutView: View {
                 .foregroundStyle(.primary)
 
             Spacer()
+
+            // Title search
+            Button { showTitleSearch = true } label: {
+                Image(systemName: "text.magnifyingglass")
+                    .font(.title3)
+                    .padding(8)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .foregroundStyle(.primary)
+            }
 
             // History
             Button { showHistory = true } label: {
@@ -250,13 +266,16 @@ struct ScoutView: View {
         Task { await lookup(trimmed) }
     }
 
-    private func lookup(_ barcode: String) async {
+    private func lookup(_ barcode: String, fromTitleSearch: Bool = false) async {
         guard !isLoading else { return }
         isScannerActive = false
         isLoading       = true
         scanResult      = nil
         lookupError     = nil
         barcodeText     = barcode
+        if !fromTitleSearch {
+            titleSearchCache = nil
+        }
 
         var product: AoBClient.ProductData? = nil
         var cat:     AoBClient.CatData?     = nil

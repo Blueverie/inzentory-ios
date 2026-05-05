@@ -110,6 +110,8 @@ struct ListFormView: View {
     @State private var isLookupLoading = false
     @State private var scanLookupError: String? = nil
     @State private var showLookup = false
+    @State private var showTitleSearch = false
+    @State private var titleSearchCache: TitleSearchResults? = nil
     @State private var recentRefreshID = UUID()
     @State private var lastListedProductId = ""
     @State private var showDuplicateProductAlert = false
@@ -206,6 +208,7 @@ struct ListFormView: View {
             }) {
                 ScanView { result in
                     scannerDeliveredResult = true
+                    titleSearchCache = nil
                     clearForm()
                     applyResult(result)
                     Task { await generateSku() }
@@ -250,6 +253,12 @@ struct ListFormView: View {
             .sheet(isPresented: $showLookup) {
                 SKULookupSheet { payload in
                     reopenItem(payload)
+                }
+            }
+            .sheet(isPresented: $showTitleSearch) {
+                TitleSearchSheet(cached: $titleSearchCache) { asin in
+                    lookupText = asin
+                    Task { await performLookup(asin) }
                 }
             }
             .sheet(isPresented: .init(
@@ -378,6 +387,15 @@ struct ListFormView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(isLookupLoading)
 
+                Button {
+                    showTitleSearch = true
+                } label: {
+                    Image(systemName: "text.magnifyingglass")
+                        .font(.title3)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isLookupLoading)
+
                 TextField("Barcode / ISBN / ASIN", text: $lookupText)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
@@ -387,6 +405,7 @@ struct ListFormView: View {
                     .focused($lookupFocused)
                     .onSubmit {
                         guard !lookupText.isEmpty else { return }
+                        titleSearchCache = nil
                         Task { await performLookup(lookupText) }
                     }
 
@@ -395,6 +414,7 @@ struct ListFormView: View {
                         .frame(width: 44)
                 } else if !lookupText.isEmpty {
                     Button("Go") {
+                        titleSearchCache = nil
                         Task { await performLookup(lookupText) }
                     }
                     .buttonStyle(.bordered)

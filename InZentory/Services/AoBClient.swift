@@ -209,6 +209,20 @@ actor AoBClient {
         let items: [AoBOrderItem]
     }
 
+    /// Single parsed result from GET /amz_keyword_search
+    struct AmzSearchItem: Sendable, Identifiable {
+        var id: String { asin }
+        let asin: String
+        let title: String
+        let author: String?
+        let brand: String?
+        let manufacturer: String?
+        let releaseDate: String?
+        let websiteDisplayGroup: String       // e.g. "book_display_on_website"
+        let websiteDisplayGroupName: String   // e.g. "Book"
+        let browseClassification: String?
+    }
+
     /// Parsed result from GET /item search
     struct AoBItem: Sendable, Identifiable {
         var id: String { sku }
@@ -523,6 +537,97 @@ actor AoBClient {
         let product = try await productTask
         let cat = try await catTask
         return LookupResult(barcode: barcode, productData: product, catData: cat)
+    }
+
+    // MARK: - Amazon Keyword Search
+
+    /// GET /api/2.0/amz_keyword_search?keywords=...  — title-based ASIN search.
+    func amzKeywordSearch(keywords: String) async throws -> [AmzSearchItem] {
+        guard let creds = try? await SharedCredentialsService.shared.getAoBCredentials()
+        else { throw AoBError.missingCredentials }
+
+        var components = URLComponents(url: baseURL.appendingPathComponent("amz_keyword_search"),
+                                       resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "keywords", value: keywords)]
+        guard let url = components.url else {
+            throw AoBError.parseError("invalid keyword search URL")
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(creds.username, forHTTPHeaderField: "AOB-AUTH-USER")
+        request.setValue(creds.password, forHTTPHeaderField: "AOB-AUTH-PW")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw AoBError.networkError(error)
+        }
+
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            throw AoBError.httpError(status, String(data: data, encoding: .utf8) ?? "")
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AoBError.parseError("amz_keyword_search: invalid JSON")
+        }
+
+        if let errorsVal = json["errors"] {
+            let detail: [String: Any]?
+            if let dict = errorsVal as? [String: Any] { detail = dict }
+            else if let arr = errorsVal as? [[String: Any]] { detail = arr.first }
+            else { detail = nil }
+            if let code = detail?["error_code"] as? Int, code != 0 {
+                let text = detail?["error_text"] as? String ?? "Unknown error"
+                if text.localizedCaseInsensitiveContains("bad token") { throw AoBError.missingCredentials }
+                throw AoBError.apiError(code, text)
+            }
+        }
+
+        guard let results = json["results"] as? [String: Any],
+              let items = results["items"] as? [[String: Any]] else {
+            return []
+        }
+
+        return items.compactMap { parseAmzSearchItem($0) }
+    }
+
+    private func parseAmzSearchItem(_ d: [String: Any]) -> AmzSearchItem? {
+        guard let asin = d["asin"] as? String, !asin.isEmpty else { return nil }
+        let summaries = d["summaries"] as? [[String: Any]] ?? []
+        guard let s = summaries.first else { return nil }
+
+        var author: String? = nil
+        if let contributors = s["contributors"] as? [[String: Any]] {
+            let authors = contributors.compactMap { c -> String? in
+                guard let role = c["role"] as? [String: Any],
+                      let roleValue = role["value"] as? String,
+                      roleValue == "author",
+                      let name = c["value"] as? String else { return nil }
+                return name
+            }
+            if !authors.isEmpty {
+                author = authors.joined(separator: ", ")
+            } else if let first = contributors.first, let name = first["value"] as? String {
+                author = name
+            }
+        }
+
+        let browse = (s["browseClassification"] as? [String: Any])?["displayName"] as? String
+
+        return AmzSearchItem(
+            asin: asin,
+            title: s["itemName"] as? String ?? "",
+            author: author,
+            brand: s["brand"] as? String,
+            manufacturer: s["manufacturer"] as? String,
+            releaseDate: s["releaseDate"] as? String,
+            websiteDisplayGroup: s["websiteDisplayGroup"] as? String ?? "other",
+            websiteDisplayGroupName: s["websiteDisplayGroupName"] as? String ?? "Other",
+            browseClassification: browse
+        )
     }
 
     // MARK: - Orders API
