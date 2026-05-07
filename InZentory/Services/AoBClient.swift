@@ -750,22 +750,36 @@ actor AoBClient {
         let qtyListed: Int
     }
 
-    /// GET /listing_stats[/year[/month]]
-    func fetchListingStats(year: Int? = nil, month: Int? = nil, week: Int? = nil) async throws -> [ListingStat] {
+    /// GET /listing_stats[/year[/month[/day]]]
+    func fetchListingStats(year: Int? = nil, month: Int? = nil, day: Int? = nil, week: Int? = nil) async throws -> [ListingStat] {
         guard let creds = try? await SharedCredentialsService.shared.getAoBCredentials()
         else { throw AoBError.missingCredentials }
 
-        var pathComponents = ["listing_stats"]
+        var path = "listing_stats"
         if let y = year {
-            pathComponents.append("\(y)")
+            path += "/\(y)"
             if let m = month {
-                pathComponents.append(String(format: "%02d", m))
+                path += "/\(String(format: "%02d", m))"
+                if let d = day {
+                    path += "/\(String(format: "%02d", d))"
+                }
             }
         }
-        var components = URLComponents(url: baseURL.appending(path: pathComponents.joined(separator: "/")),
-                                       resolvingAgainstBaseURL: false)!
-        if let w = week, year != nil {
-            components.queryItems = [URLQueryItem(name: "week", value: "\(w)")]
+
+        var components = URLComponents(
+            url: baseURL
+                .appendingPathComponent(path.components(separatedBy: "/")[0])
+                .appendingPathComponent(path.components(separatedBy: "/").dropFirst().joined(separator: "/")),
+            resolvingAgainstBaseURL: false
+        )!
+
+        if let w = week, year != nil, month == nil, day == nil {
+            // Backend deployments differ on the expected week query key.
+            components.queryItems = [
+                URLQueryItem(name: "week", value: "\(w)"),
+                URLQueryItem(name: "week_of_year", value: "\(w)"),
+                URLQueryItem(name: "iso_week", value: "\(w)")
+            ]
         }
         guard let url = components.url else { throw AoBError.networkError(URLError(.badURL)) }
 

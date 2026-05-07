@@ -557,10 +557,11 @@ private struct SalesStatsView: View {
 
 private struct ListingStatsView: View {
     enum Scope: String, CaseIterable, Identifiable {
-        case week, month, year, all
+        case day, week, month, year, all
         var id: String { rawValue }
         var label: String {
             switch self {
+            case .day:   return "Day"
             case .week:  return "Week"
             case .month: return "Month"
             case .year:  return "Year"
@@ -572,6 +573,7 @@ private struct ListingStatsView: View {
     @State private var scope: Scope = .week
     @State private var year: Int = Calendar.current.component(.year, from: Date())
     @State private var month: Int = Calendar.current.component(.month, from: Date())
+    @State private var day: Int = Calendar.current.component(.day, from: Date())
     @State private var week: Int = {
         Calendar(identifier: .iso8601).component(.weekOfYear, from: Date())
     }()
@@ -583,6 +585,15 @@ private struct ListingStatsView: View {
     private let currentYear = Calendar.current.component(.year, from: Date())
     private var yearRange: [Int] { Array((currentYear - 5)...currentYear).reversed() }
     private var weekRange: [Int] { Array(1...53) }
+    private var dayRange: [Int] {
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        let cal = Calendar(identifier: .gregorian)
+        guard let date = cal.date(from: comps),
+              let range = cal.range(of: .day, in: .month, for: date) else { return Array(1...31) }
+        return Array(range)
+    }
     private static let listerAliases: [String: String] = [
         "evstover55@gmail.com": "Momsie"
     ]
@@ -628,6 +639,7 @@ private struct ListingStatsView: View {
         case .all:   return "all"
         case .year:  return "year-\(year)"
         case .month: return "month-\(year)-\(month)"
+        case .day:   return "day-\(year)-\(month)-\(day)"
         case .week:  return "week-\(year)-\(week)"
         }
     }
@@ -655,7 +667,7 @@ private struct ListingStatsView: View {
                 }
                 .pickerStyle(.menu)
             }
-        case .month:
+        case .month, .day:
             HStack(spacing: 12) {
                 Picker("Year", selection: $year) {
                     ForEach(yearRange, id: \.self) { y in Text(String(y)).tag(y) }
@@ -667,6 +679,12 @@ private struct ListingStatsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+                if scope == .day {
+                    Picker("Day", selection: $day) {
+                        ForEach(dayRange, id: \.self) { d in Text("\(d)").tag(d) }
+                    }
+                    .pickerStyle(.menu)
+                }
                 Spacer()
             }
         case .week:
@@ -741,12 +759,16 @@ private struct ListingStatsView: View {
     @MainActor
     private func load() async {
         loading = true; errorMessage = nil
+        if !dayRange.contains(day) {
+            day = dayRange.first ?? 1
+        }
         do {
             let results: [AoBClient.ListingStat]
             switch scope {
             case .all:   results = try await AoBClient.shared.fetchListingStats()
             case .year:  results = try await AoBClient.shared.fetchListingStats(year: year)
             case .month: results = try await AoBClient.shared.fetchListingStats(year: year, month: month)
+            case .day:   results = try await AoBClient.shared.fetchListingStats(year: year, month: month, day: day)
             case .week:  results = try await AoBClient.shared.fetchListingStats(year: year, week: week)
             }
             listingStats = results
