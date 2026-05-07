@@ -29,6 +29,7 @@ struct StatsView: View {
     @State private var month: Int = Calendar.current.component(.month, from: Date())
 
     @State private var stats: [AoBClient.SalesStat] = []
+    @State private var listingStats: [AoBClient.ListingStat] = []
     @State private var loading = false
     @State private var errorMessage: String?
     @State private var selectedDate: Date?
@@ -56,6 +57,7 @@ struct StatsView: View {
 
                 sourceBreakdown
                 listerBreakdown
+                listingStatsBreakdown
             }
             .padding(16)
         }
@@ -541,6 +543,46 @@ struct StatsView: View {
         }
     }
 
+    // MARK: - Listing stats breakdown
+
+    @ViewBuilder
+    private var listingStatsBreakdown: some View {
+        if !listingStats.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("LISTINGS BY LISTER")
+                    .font(.custom("Inconsolata-Bold", size: 11))
+                    .tracking(2)
+                    .foregroundStyle(.secondary)
+
+                let maxQty = listingStats.map(\.qtyListed).max() ?? 1
+                VStack(spacing: 10) {
+                    ForEach(listingStats) { row in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(row.lister.uppercased())
+                                    .font(.custom("Inconsolata-Bold", size: 13))
+                                    .tracking(1)
+                                Spacer()
+                                Text("\(row.qtyListed)")
+                                    .font(.custom("Inconsolata-Bold", size: 13))
+                                    .monospacedDigit()
+                            }
+                            GeometryReader { geo in
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(.teal.opacity(0.5))
+                                    .frame(width: geo.size.width * CGFloat(row.qtyListed) / CGFloat(maxQty),
+                                           height: 6)
+                            }
+                            .frame(height: 6)
+                        }
+                    }
+                }
+            }
+            .padding(12)
+            .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
     // MARK: - Load
 
     @MainActor
@@ -549,13 +591,22 @@ struct StatsView: View {
         errorMessage = nil
         selectedDate = nil
         do {
-            let results: [AoBClient.SalesStat]
-            switch scope {
-            case .all:   results = try await AoBClient.shared.fetchSalesStats()
-            case .year:  results = try await AoBClient.shared.fetchSalesStats(year: year)
-            case .month: results = try await AoBClient.shared.fetchSalesStats(year: year, month: month)
-            }
-            stats = results
+            async let salesFetch: [AoBClient.SalesStat] = {
+                switch scope {
+                case .all:   return try await AoBClient.shared.fetchSalesStats()
+                case .year:  return try await AoBClient.shared.fetchSalesStats(year: year)
+                case .month: return try await AoBClient.shared.fetchSalesStats(year: year, month: month)
+                }
+            }()
+            async let listingFetch: [AoBClient.ListingStat] = {
+                switch scope {
+                case .all:   return (try? await AoBClient.shared.fetchListingStats()) ?? []
+                case .year:  return (try? await AoBClient.shared.fetchListingStats(year: year)) ?? []
+                case .month: return (try? await AoBClient.shared.fetchListingStats(year: year, month: month)) ?? []
+                }
+            }()
+            stats = try await salesFetch
+            listingStats = await listingFetch
         } catch {
             stats = []
             errorMessage = error.localizedDescription

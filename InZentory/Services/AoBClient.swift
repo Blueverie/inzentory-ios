@@ -744,6 +744,47 @@ actor AoBClient {
         let totalCommission: Double
     }
 
+    struct ListingStat: Sendable, Identifiable {
+        let id = UUID()
+        let lister: String
+        let qtyListed: Int
+    }
+
+    /// GET /listing_stats[/year[/month]]
+    func fetchListingStats(year: Int? = nil, month: Int? = nil) async throws -> [ListingStat] {
+        guard let creds = try? await SharedCredentialsService.shared.getAoBCredentials()
+        else { throw AoBError.missingCredentials }
+
+        var path = "listing_stats"
+        if let y = year {
+            path += "/\(y)"
+            if let m = month {
+                path += "/\(String(format: "%02d", m))"
+            }
+        }
+
+        let json = try await fetch(endpoint: path, username: creds.username, password: creds.password)
+
+        let rows: [[String: Any]]
+        if let arr = json["results"] as? [[String: Any]] {
+            rows = arr
+        } else if let arr = json["results"] as? [Any] {
+            rows = arr.compactMap { $0 as? [String: Any] }
+        } else {
+            return []
+        }
+
+        return rows.compactMap { row in
+            guard let lister = row["lister"] as? String else { return nil }
+            let qty: Int = {
+                if let i = row["qty_listed"] as? Int { return i }
+                if let s = row["qty_listed"] as? String { return Int(s) ?? 0 }
+                return 0
+            }()
+            return ListingStat(lister: lister, qtyListed: qty)
+        }
+    }
+
     /// GET /sales_stats[/year[/month[/day]]]
     /// Pass nil for year to fetch all-time stats. Month/day are optional.
     func fetchSalesStats(year: Int? = nil, month: Int? = nil, day: Int? = nil) async throws -> [SalesStat] {
