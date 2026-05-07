@@ -31,7 +31,6 @@ struct ScanView: View {
     @State private var isLoading = false
     @State private var lookupError: String? = nil
     @State private var scanResult: ScanResult? = nil
-    @State private var showManualInput = false
     @State private var manualBarcode = ""
     @FocusState private var manualInputFocused: Bool
 
@@ -69,28 +68,6 @@ struct ScanView: View {
                         Spacer()
 
                         Button {
-                            showManualInput.toggle()
-                            if showManualInput {
-                                isScannerActive = false
-                                Task { @MainActor in
-                                    try? await Task.sleep(for: .milliseconds(50))
-                                    manualInputFocused = true
-                                }
-                            } else {
-                                isScannerActive = true
-                                manualBarcode = ""
-                            }
-                        } label: {
-                            Image(systemName: showManualInput ? "keyboard.chevron.compact.down.fill" : "keyboard")
-                                .font(.title3)
-                                .padding(8)
-                                .background(.ultraThinMaterial, in: Circle())
-                                .foregroundStyle(showManualInput ? Color.accentColor : .primary)
-                        }
-                        .padding(.trailing, 8)
-                        .padding(.top, 8)
-
-                        Button {
                             dismiss()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
@@ -115,7 +92,7 @@ struct ScanView: View {
                     if let error = lookupError {
                         Button {
                             lookupError = nil
-                            isScannerActive = !showManualInput
+                            isScannerActive = true
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "exclamationmark.circle.fill")
@@ -149,37 +126,31 @@ struct ScanView: View {
 
             // Manual input lives outside the camera ZStack so the sheet's
             // keyboard avoidance correctly lifts it above the keyboard.
-            if showManualInput {
-                HStack(spacing: 8) {
-                    TextField("Enter barcode", text: $manualBarcode)
-                        .keyboardType(.numberPad)
-                        .focused($manualInputFocused)
-                        .submitLabel(.search)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-                        .onSubmit { submitManual() }
-                        .onAppear {
-                            Task { @MainActor in
-                                try? await Task.sleep(for: .milliseconds(300))
-                                manualInputFocused = true
-                            }
-                        }
-
-                    Button(action: submitManual) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(Color.accentColor)
+            HStack(spacing: 8) {
+                TextField("Enter barcode", text: $manualBarcode)
+                    .keyboardType(.numberPad)
+                    .focused($manualInputFocused)
+                    .submitLabel(.search)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    .onSubmit { submitManual() }
+                    .onChange(of: manualInputFocused) { _, focused in
+                        isScannerActive = !focused
                     }
-                    .disabled(manualBarcode.trimmingCharacters(in: .whitespaces).isEmpty || isLoading)
+
+                Button(action: submitManual) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.accentColor)
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .disabled(manualBarcode.trimmingCharacters(in: .whitespaces).isEmpty || isLoading)
             }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+            .keyboardDoneButton()
         }
-        .animation(.spring(duration: 0.3), value: showManualInput)
         .onChange(of: isScannerActive) { _, active in
             if !active && torchOn {
                 torchOn = false
