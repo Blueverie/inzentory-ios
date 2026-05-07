@@ -9,12 +9,14 @@ struct ConditionPicker: View {
     @Binding var selection: ItemCondition?
     var cases: [ItemCondition] = ItemCondition.storiesCases
     var tint: Color = .accentColor
+    var disabledCases: Set<ItemCondition> = []
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Array(cases.enumerated()), id: \.element) { index, cond in
+                let isDisabled = disabledCases.contains(cond)
                 Button {
-                    selection = (selection == cond) ? nil : cond
+                    if !isDisabled { selection = (selection == cond) ? nil : cond }
                 } label: {
                     let useShort = cases.count > 4
                     Text(useShort ? cond.shortName : cond.displayName)
@@ -24,7 +26,10 @@ struct ConditionPicker: View {
                         .background(
                             selection == cond ? tint : Color.clear
                         )
-                        .foregroundStyle(selection == cond ? .white : .primary)
+                        .foregroundStyle(
+                            isDisabled ? Color.secondary.opacity(0.4)
+                                : selection == cond ? .white : .primary
+                        )
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

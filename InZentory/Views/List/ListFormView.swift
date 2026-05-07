@@ -27,6 +27,7 @@ struct ListFormView: View {
     @State private var isbn = ""
     @State private var upc = ""
     @State private var condition: ItemCondition? = nil
+    @State private var isExLibrary = false
     @State private var title = ""
     @State private var author = ""
     @State private var publisher = ""
@@ -216,21 +217,21 @@ struct ListFormView: View {
             }
             .sheet(isPresented: $showStockPhrases) {
                 StockPhrasesSheet(phrases: settings.stockPhrases) { phrase in
-                    notes += (notes.isEmpty ? "" : " ") + phrase
+                    notes += (notes.isEmpty ? "" : "; ") + phrase
                     showStockPhrases = false
                 }
                 .presentationDetents([.medium])
             }
             .sheet(isPresented: $showSurplusNotesPhrases) {
                 StockPhrasesSheet(phrases: settings.surplusNotesPhrases) { phrase in
-                    notes += (notes.isEmpty ? "" : " ") + phrase
+                    notes += (notes.isEmpty ? "" : "; ") + phrase
                     showSurplusNotesPhrases = false
                 }
                 .presentationDetents([.medium])
             }
             .sheet(isPresented: $showSurplusDescPhrases) {
                 StockPhrasesSheet(phrases: settings.surplusDescriptionPhrases) { phrase in
-                    itemDescription += (itemDescription.isEmpty ? "" : " ") + phrase
+                    itemDescription += (itemDescription.isEmpty ? "" : "; ") + phrase
                     showSurplusDescPhrases = false
                 }
                 .presentationDetents([.medium])
@@ -615,8 +616,40 @@ struct ListFormView: View {
 
             // Condition
             VStack(alignment: .leading, spacing: 6) {
-                fieldLabel("Condition")
-                ConditionPicker(selection: $condition, cases: ItemCondition.storiesCases, tint: .orange)
+                HStack {
+                    fieldLabel("Condition")
+                    Spacer()
+                    Toggle(isOn: $isExLibrary) {
+                        Text("Ex-Library")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .toggleStyle(.button)
+                    .controlSize(.mini)
+                    .tint(.orange)
+                    .onChange(of: isExLibrary) { _, exLib in
+                        if exLib {
+                            if condition != .good && condition != .acceptable {
+                                condition = nil
+                            } else {
+                                notes = exLibraryNote(for: condition)
+                            }
+                        }
+                    }
+                }
+                ConditionPicker(
+                    selection: $condition,
+                    cases: ItemCondition.storiesCases,
+                    tint: .orange,
+                    disabledCases: isExLibrary
+                        ? Set(ItemCondition.storiesCases.filter { $0 != .good && $0 != .acceptable })
+                        : []
+                )
+                .onChange(of: condition) { _, newCond in
+                    if isExLibrary {
+                        notes = exLibraryNote(for: newCond)
+                    }
+                }
             }
 
             // Title
@@ -1312,6 +1345,17 @@ struct ListFormView: View {
         Text(text).font(.caption).foregroundStyle(.secondary)
     }
 
+    private func exLibraryNote(for cond: ItemCondition?) -> String {
+        switch cond {
+        case .good:
+            return "library discard, withdrawn from circulation; includes identifying marks, stickers, and other artifacts; may include protective plastic"
+        case .acceptable:
+            return "library discard, withdrawn from circulation; in addition to standard indentifying marks, stickers, and other artifacts, it includes additional cosmetic flaws from removal or significant use"
+        default:
+            return ""
+        }
+    }
+
     /// Recomputes `weight` (total oz) from the lb and oz display fields.
     private func updateWeightFromParts() {
         let lbs   = Int(weightLbs) ?? 0
@@ -1757,6 +1801,7 @@ struct ListFormView: View {
         isbn             = ""
         upc              = ""
         condition        = nil
+        isExLibrary      = false
         title            = ""
         author           = ""
         publisher        = ""
