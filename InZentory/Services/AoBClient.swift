@@ -755,18 +755,31 @@ actor AoBClient {
         guard let creds = try? await SharedCredentialsService.shared.getAoBCredentials()
         else { throw AoBError.missingCredentials }
 
-        var path = "listing_stats"
+        var pathComponents = ["listing_stats"]
         if let y = year {
-            path += "/\(y)"
+            pathComponents.append("\(y)")
             if let m = month {
-                path += "/\(String(format: "%02d", m))"
-            }
-            if let w = week {
-                path += "?week=\(w)"
+                pathComponents.append(String(format: "%02d", m))
             }
         }
+        var components = URLComponents(url: baseURL.appending(path: pathComponents.joined(separator: "/")),
+                                       resolvingAgainstBaseURL: false)!
+        if let w = week, year != nil {
+            components.queryItems = [URLQueryItem(name: "week", value: "\(w)")]
+        }
+        guard let url = components.url else { throw AoBError.networkError(URLError(.badURL)) }
 
-        let json = try await fetch(endpoint: path, username: creds.username, password: creds.password)
+        var request = URLRequest(url: url)
+        request.setValue(creds.username, forHTTPHeaderField: "AOB-AUTH-USER")
+        request.setValue(creds.password, forHTTPHeaderField: "AOB-AUTH-PW")
+        print("[AoB] GET \(url.absoluteString)")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw AoBError.httpError(http.statusCode, "listing_stats")
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw AoBError.parseError("listing_stats: expected JSON object") }
 
         let rows: [[String: Any]]
         if let arr = json["results"] as? [[String: Any]] {

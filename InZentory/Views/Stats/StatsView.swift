@@ -446,7 +446,8 @@ private struct SalesStatsView: View {
     ]
 
     private func canonicalLister(_ raw: String) -> String {
-        Self.listerAliases[raw.lowercased()] ?? raw
+        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return Self.listerAliases[key] ?? raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var listerStatRows: [ListerStatRow] {
