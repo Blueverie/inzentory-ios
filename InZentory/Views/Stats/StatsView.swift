@@ -6,7 +6,41 @@
 import SwiftUI
 import Charts
 
+// MARK: - Container
+
 struct StatsView: View {
+    enum Tab: String, CaseIterable, Identifiable {
+        case sales, listings
+        var id: String { rawValue }
+        var label: String { rawValue == "sales" ? "Sales" : "Listings" }
+    }
+
+    @State private var tab: Tab = .sales
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Stats tab", selection: $tab) {
+                ForEach(Tab.allCases) { t in Text(t.label).tag(t) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+
+            if tab == .sales {
+                SalesStatsView()
+            } else {
+                ListingStatsView()
+            }
+        }
+        .navigationTitle("Stats")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Sales Stats
+
+private struct SalesStatsView: View {
     @Environment(OrdersService.self) private var ordersService
     @Environment(SourcesService.self) private var sourcesService
 
@@ -27,15 +61,14 @@ struct StatsView: View {
     @State private var scope: Scope = .month
     @State private var year: Int = Calendar.current.component(.year, from: Date())
     @State private var month: Int = Calendar.current.component(.month, from: Date())
-
     @State private var stats: [AoBClient.SalesStat] = []
-    @State private var listingStats: [AoBClient.ListingStat] = []
     @State private var loading = false
     @State private var errorMessage: String?
     @State private var selectedDate: Date?
 
     private let monthSymbols = DateFormatter().standaloneMonthSymbols ?? []
     private let currentYear = Calendar.current.component(.year, from: Date())
+    private var yearRange: [Int] { Array((currentYear - 5)...currentYear).reversed() }
 
     var body: some View {
         ScrollView {
@@ -57,12 +90,9 @@ struct StatsView: View {
 
                 sourceBreakdown
                 listerBreakdown
-                listingStatsBreakdown
             }
             .padding(16)
         }
-        .navigationTitle("Sales Stats")
-        .navigationBarTitleDisplayMode(.inline)
         .task(id: scopeKey) { await load() }
         .refreshable { await load() }
     }
@@ -75,7 +105,7 @@ struct StatsView: View {
         }
     }
 
-    // MARK: - Scope controls
+    // MARK: Scope controls
 
     private var scopePicker: some View {
         Picker("Scope", selection: $scope) {
@@ -115,9 +145,7 @@ struct StatsView: View {
         }
     }
 
-    private var yearRange: [Int] { Array((currentYear - 5)...currentYear).reversed() }
-
-    // MARK: - Summary
+    // MARK: Summary
 
     private var totalRevenue: Double { stats.reduce(0) { $0 + $1.totalPrice } }
     private var totalCommission: Double { stats.reduce(0) { $0 + $1.totalCommission } }
@@ -133,9 +161,8 @@ struct StatsView: View {
         }
     }
 
-    // MARK: - Chart
+    // MARK: Chart
 
-    /// Buckets stats by date/month/year depending on scope.
     private var bucketedStats: [(bucket: Date, venue: String, revenue: Double)] {
         let cal = Calendar(identifier: .gregorian)
         let component: Calendar.Component
@@ -148,15 +175,11 @@ struct StatsView: View {
         for s in stats {
             let bucket = cal.dateInterval(of: component, for: s.date)?.start ?? s.date
             let key = "\(bucket.timeIntervalSince1970)-\(s.venue)" as AnyHashable
-            let existing = dict[key]?.2 ?? 0
-            dict[key] = (bucket, s.venue, existing + s.totalPrice)
+            dict[key] = (bucket, s.venue, (dict[key]?.2 ?? 0) + s.totalPrice)
         }
         return dict.values
             .map { (bucket: $0.0, venue: $0.1, revenue: $0.2) }
-            .sorted { lhs, rhs in
-                if lhs.bucket != rhs.bucket { return lhs.bucket < rhs.bucket }
-                return lhs.venue < rhs.venue
-            }
+            .sorted { $0.bucket != $1.bucket ? $0.bucket < $1.bucket : $0.venue < $1.venue }
     }
 
     private var chartDateFormat: Date.FormatStyle {
@@ -164,6 +187,14 @@ struct StatsView: View {
         case .month: return .dateTime.day()
         case .year:  return .dateTime.month(.abbreviated)
         case .all:   return .dateTime.year()
+        }
+    }
+
+    private var scopeUnit: Calendar.Component {
+        switch scope {
+        case .month: return .day
+        case .year:  return .month
+        case .all:   return .year
         }
     }
 
@@ -183,9 +214,7 @@ struct StatsView: View {
                     .foregroundStyle(by: .value("Venue", row.venue))
                     .cornerRadius(3)
                 }
-
-                if let sel = selectedDate,
-                   let totals = bucketTotals(for: sel) {
+                if let sel = selectedDate, let totals = bucketTotals(for: sel) {
                     RuleMark(x: .value("Selected", totals.bucket, unit: scopeUnit))
                         .foregroundStyle(.secondary.opacity(0.3))
                         .annotation(position: .top, alignment: .center, spacing: 4) {
@@ -195,8 +224,7 @@ struct StatsView: View {
             }
             .chartXAxis {
                 AxisMarks(values: .automatic) { value in
-                    AxisGridLine()
-                    AxisTick()
+                    AxisGridLine(); AxisTick()
                     if let d = value.as(Date.self) {
                         AxisValueLabel { Text(d, format: chartDateFormat) }
                     }
@@ -217,20 +245,9 @@ struct StatsView: View {
         .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private var scopeUnit: Calendar.Component {
-        switch scope {
-        case .month: return .day
-        case .year:  return .month
-        case .all:   return .year
-        }
-    }
-
     private struct BucketTotals {
-        let bucket: Date
-        let revenue: Double
-        let qty: Int
-        let commission: Double
-        let byVenue: [(venue: String, revenue: Double)]
+        let bucket: Date; let revenue: Double; let qty: Int
+        let commission: Double; let byVenue: [(venue: String, revenue: Double)]
     }
 
     private func bucketTotals(for date: Date) -> BucketTotals? {
@@ -238,9 +255,8 @@ struct StatsView: View {
         guard let interval = cal.dateInterval(of: scopeUnit, for: date) else { return nil }
         let matches = stats.filter { $0.date >= interval.start && $0.date < interval.end }
         guard !matches.isEmpty else { return nil }
-        let venueDict = Dictionary(grouping: matches, by: \.venue)
+        let byVenue = Dictionary(grouping: matches, by: \.venue)
             .mapValues { $0.reduce(0) { $0 + $1.totalPrice } }
-        let byVenue = venueDict
             .map { (venue: $0.key, revenue: $0.value) }
             .sorted { $0.revenue > $1.revenue }
         return BucketTotals(
@@ -255,14 +271,10 @@ struct StatsView: View {
     @ViewBuilder
     private func selectionPopover(_ totals: BucketTotals) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(totals.bucket, format: popoverDateFormat)
-                .font(.caption.bold())
-            Text("\(money(totals.revenue)) · \(totals.qty) qty")
-                .font(.caption)
+            Text(totals.bucket, format: popoverDateFormat).font(.caption.bold())
+            Text("\(money(totals.revenue)) · \(totals.qty) qty").font(.caption)
             ForEach(totals.byVenue, id: \.venue) { v in
-                Text("\(v.venue): \(money(v.revenue))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text("\(v.venue): \(money(v.revenue))").font(.caption2).foregroundStyle(.secondary)
             }
         }
         .padding(8)
@@ -278,54 +290,44 @@ struct StatsView: View {
         }
     }
 
-    // MARK: - Venue breakdown
+    // MARK: Venue breakdown
 
     private var venueBreakdown: some View {
-        let groups: [String: [AoBClient.SalesStat]] = Dictionary(grouping: stats, by: { $0.venue })
-        var rows: [VenueRow] = []
-        for (venue, items) in groups {
-            let revenue = items.reduce(0.0) { $0 + $1.totalPrice }
-            let qty = items.reduce(0) { $0 + $1.totalQty }
-            let commission = items.reduce(0.0) { $0 + $1.totalCommission }
-            rows.append(VenueRow(venue: venue, revenue: revenue, qty: qty, commission: commission))
+        let groups = Dictionary(grouping: stats, by: \.venue)
+        var rows: [VenueRow] = groups.map { venue, items in
+            VenueRow(venue: venue,
+                     revenue: items.reduce(0) { $0 + $1.totalPrice },
+                     qty: items.reduce(0) { $0 + $1.totalQty },
+                     commission: items.reduce(0) { $0 + $1.totalCommission })
         }
         rows.sort { $0.revenue > $1.revenue }
-        let grouped = rows
-        let maxRevenue = grouped.map { $0.revenue }.max() ?? 1
+        let maxRevenue = rows.map(\.revenue).max() ?? 1
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("BY VENUE")
                 .font(.custom("Inconsolata-Bold", size: 11))
-                .tracking(2)
-                .foregroundStyle(.secondary)
-
+                .tracking(2).foregroundStyle(.secondary)
             VStack(spacing: 10) {
-                ForEach(grouped, id: \.venue) { row in
+                ForEach(rows) { row in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text(row.venue.uppercased())
-                                .font(.custom("Inconsolata-Bold", size: 13))
-                                .tracking(1)
+                                .font(.custom("Inconsolata-Bold", size: 13)).tracking(1)
                             Spacer()
                             Text(money(row.revenue))
-                                .font(.custom("Inconsolata-Bold", size: 13))
-                                .monospacedDigit()
+                                .font(.custom("Inconsolata-Bold", size: 13)).monospacedDigit()
                         }
                         GeometryReader { geo in
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(.blue.opacity(0.5))
-                                .frame(width: geo.size.width * CGFloat(row.revenue / maxRevenue),
-                                       height: 6)
+                            RoundedRectangle(cornerRadius: 3).fill(.blue.opacity(0.5))
+                                .frame(width: geo.size.width * CGFloat(row.revenue / maxRevenue), height: 6)
                         }
                         .frame(height: 6)
                         HStack {
                             Text("\(row.qty) items · \(money(row.commission)) commission")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(.secondary)
                             Spacer()
                             Text("Net \(money(row.revenue - row.commission))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -335,45 +337,7 @@ struct StatsView: View {
         .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - Helpers
-
-    private func money(_ v: Double, compact: Bool = false) -> String {
-        if compact {
-            if abs(v) >= 1000 { return String(format: "$%.1fk", v / 1000) }
-            return String(format: "$%.0f", v)
-        }
-        return String(format: "$%.2f", v)
-    }
-
-    @ViewBuilder
-    private func errorCard(_ msg: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Couldn't load stats", systemImage: "exclamationmark.triangle")
-                .font(.headline)
-            Text(msg).font(.caption).foregroundStyle(.secondary)
-            Button("Retry") { Task { await load() } }
-                .buttonStyle(.bordered)
-                .padding(.top, 4)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-    }
-
-    private var emptyCard: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "chart.bar.xaxis")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-            Text("No sales data for this period.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(40)
-    }
-
-    // MARK: - Scoped order filtering
+    // MARK: Scoped order filtering
 
     private static let orderDateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -384,55 +348,47 @@ struct StatsView: View {
 
     private var scopedOrders: [AoBClient.AoBOrder] {
         let all = ordersService.ordersByList.values.flatMap { $0 }
+        let cal = Calendar(identifier: .gregorian)
         switch scope {
-        case .all:
-            return all
+        case .all: return all
         case .year:
-            let cal = Calendar(identifier: .gregorian)
             guard let start = cal.date(from: DateComponents(year: year, month: 1, day: 1)),
-                  let end   = cal.date(byAdding: .year, value: 1, to: start)
-            else { return all }
+                  let end = cal.date(byAdding: .year, value: 1, to: start) else { return all }
             return all.filter { inRange($0.orderDate, start: start, end: end) }
         case .month:
-            let cal = Calendar(identifier: .gregorian)
             guard let start = cal.date(from: DateComponents(year: year, month: month, day: 1)),
-                  let end   = cal.date(byAdding: .month, value: 1, to: start)
-            else { return all }
+                  let end = cal.date(byAdding: .month, value: 1, to: start) else { return all }
             return all.filter { inRange($0.orderDate, start: start, end: end) }
         }
     }
 
     private func inRange(_ dateStr: String?, start: Date, end: Date) -> Bool {
-        guard let s = dateStr,
-              let d = Self.orderDateFormatter.date(from: s) else { return false }
+        guard let s = dateStr, let d = Self.orderDateFormatter.date(from: s) else { return false }
         return d >= start && d < end
     }
 
-    // MARK: - Source breakdown
+    // MARK: Source breakdown
 
     private struct SourceStatRow {
-        let source: SourceRecord
-        let revenue: Double
-        let qty: Int
+        let source: SourceRecord; let revenue: Double; let qty: Int
     }
 
     private var sourceStatRows: [SourceStatRow] {
-        var revenueByName: [String: (revenue: Double, qty: Int)] = [:]
+        var byName: [String: (revenue: Double, qty: Int)] = [:]
         for order in scopedOrders {
             for item in order.items {
                 guard let s = item.source, !s.isEmpty else { continue }
                 let price = Double(item.price ?? "") ?? 0
                 let qty = item.qty ?? 0
-                var entry = revenueByName[s] ?? (0, 0)
-                entry.revenue += price * Double(qty)
-                entry.qty += qty
-                revenueByName[s] = entry
+                var e = byName[s] ?? (0, 0)
+                e.revenue += price * Double(qty); e.qty += qty
+                byName[s] = e
             }
         }
         return sourceRecords
             .filter { $0.name != "Backlog" }
             .map { rec in
-                let r = revenueByName[rec.name] ?? (0, 0)
+                let r = byName[rec.name] ?? (0, 0)
                 return SourceStatRow(source: rec, revenue: r.revenue, qty: r.qty)
             }
             .sorted { ($0.revenue - $0.source.totalCost) > ($1.revenue - $1.source.totalCost) }
@@ -440,23 +396,15 @@ struct StatsView: View {
 
     @ViewBuilder
     private var sourceBreakdown: some View {
-        if sourceStatRows.isEmpty {
-            EmptyView()
-        } else {
+        if !sourceStatRows.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("BY SOURCE")
                     .font(.custom("Inconsolata-Bold", size: 11))
-                    .tracking(2)
-                    .foregroundStyle(.secondary)
-
+                    .tracking(2).foregroundStyle(.secondary)
                 Text("Net = revenue from currently active orders − recorded cost.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
+                    .font(.caption2).foregroundStyle(.secondary)
                 VStack(spacing: 10) {
-                    ForEach(sourceStatRows, id: \.source.id) { row in
-                        sourceRow(row)
-                    }
+                    ForEach(sourceStatRows, id: \.source.id) { sourceRow($0) }
                 }
             }
             .padding(12)
@@ -464,20 +412,41 @@ struct StatsView: View {
         }
     }
 
-    // MARK: - Lister breakdown
-
-    private struct ListerStatRow {
-        let name: String
-        let revenue: Double
-        let qty: Int
+    @ViewBuilder
+    private func sourceRow(_ row: SourceStatRow) -> some View {
+        let net = row.revenue - row.source.totalCost
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: row.source.kind.icon).foregroundStyle(.secondary).font(.caption)
+                Text(row.source.name.uppercased())
+                    .font(.custom("Inconsolata-Bold", size: 13)).tracking(1)
+                if row.source.state == .closed {
+                    Text("CLOSED").font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(money(net))
+                    .font(.custom("Inconsolata-Bold", size: 13)).monospacedDigit()
+                    .foregroundStyle(net >= 0 ? .green : .red)
+            }
+            HStack {
+                Text("Cost \(money(row.source.totalCost)) · Rev \(money(row.revenue))")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(row.qty) sold").font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
+
+    // MARK: Lister breakdown
+
+    private struct ListerStatRow { let name: String; let revenue: Double; let qty: Int }
 
     private static let listerAliases: [String: String] = [
         "evstover55@gmail.com": "Momsie"
     ]
 
     private func canonicalLister(_ raw: String) -> String {
-        Self.listerAliases[raw] ?? raw
+        Self.listerAliases[raw.lowercased()] ?? raw
     }
 
     private var listerStatRows: [ListerStatRow] {
@@ -488,10 +457,9 @@ struct StatsView: View {
                 let lister = canonicalLister(raw)
                 let price = Double(item.price ?? "") ?? 0
                 let qty = item.qty ?? 0
-                var entry = totals[lister] ?? (0, 0)
-                entry.revenue += price * Double(qty)
-                entry.qty += qty
-                totals[lister] = entry
+                var e = totals[lister] ?? (0, 0)
+                e.revenue += price * Double(qty); e.qty += qty
+                totals[lister] = e
             }
         }
         return totals
@@ -506,38 +474,26 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("BY LISTER")
                     .font(.custom("Inconsolata-Bold", size: 11))
-                    .tracking(2)
-                    .foregroundStyle(.secondary)
-
+                    .tracking(2).foregroundStyle(.secondary)
                 Text("Revenue from currently active orders, attributed by p2.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
+                    .font(.caption2).foregroundStyle(.secondary)
                 let maxRevenue = rows.map(\.revenue).max() ?? 1
                 VStack(spacing: 10) {
                     ForEach(rows, id: \.name) { row in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text(row.name.uppercased())
-                                    .font(.custom("Inconsolata-Bold", size: 13))
-                                    .tracking(1)
+                                    .font(.custom("Inconsolata-Bold", size: 13)).tracking(1)
                                 Spacer()
                                 Text(money(row.revenue))
-                                    .font(.custom("Inconsolata-Bold", size: 13))
-                                    .monospacedDigit()
+                                    .font(.custom("Inconsolata-Bold", size: 13)).monospacedDigit()
                             }
                             GeometryReader { geo in
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(.purple.opacity(0.5))
-                                    .frame(width: geo.size.width * CGFloat(row.revenue / maxRevenue),
-                                           height: 6)
+                                RoundedRectangle(cornerRadius: 3).fill(.purple.opacity(0.5))
+                                    .frame(width: geo.size.width * CGFloat(row.revenue / maxRevenue), height: 6)
                             }
                             .frame(height: 6)
-                            HStack {
-                                Text("\(row.qty) sold")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text("\(row.qty) sold").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -547,53 +503,178 @@ struct StatsView: View {
         }
     }
 
+    // MARK: Helpers
+
+    private func money(_ v: Double, compact: Bool = false) -> String {
+        if compact {
+            if abs(v) >= 1000 { return String(format: "$%.1fk", v / 1000) }
+            return String(format: "$%.0f", v)
+        }
+        return String(format: "$%.2f", v)
+    }
+
     @ViewBuilder
-    private func sourceRow(_ row: SourceStatRow) -> some View {
-        let net = row.revenue - row.source.totalCost
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Image(systemName: row.source.kind.icon)
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-                Text(row.source.name.uppercased())
-                    .font(.custom("Inconsolata-Bold", size: 13))
-                    .tracking(1)
-                if row.source.state == .closed {
-                    Text("CLOSED")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(money(net))
-                    .font(.custom("Inconsolata-Bold", size: 13))
-                    .monospacedDigit()
-                    .foregroundStyle(net >= 0 ? .green : .red)
+    private func errorCard(_ msg: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Couldn't load stats", systemImage: "exclamationmark.triangle").font(.headline)
+            Text(msg).font(.caption).foregroundStyle(.secondary)
+            Button("Retry") { Task { await load() } }.buttonStyle(.bordered).padding(.top, 4)
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var emptyCard: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "chart.bar.xaxis").font(.largeTitle).foregroundStyle(.secondary)
+            Text("No sales data for this period.").font(.subheadline).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity).padding(40)
+    }
+
+    // MARK: Load
+
+    @MainActor
+    private func load() async {
+        loading = true; errorMessage = nil; selectedDate = nil
+        do {
+            let results: [AoBClient.SalesStat]
+            switch scope {
+            case .all:   results = try await AoBClient.shared.fetchSalesStats()
+            case .year:  results = try await AoBClient.shared.fetchSalesStats(year: year)
+            case .month: results = try await AoBClient.shared.fetchSalesStats(year: year, month: month)
             }
-            HStack {
-                Text("Cost \(money(row.source.totalCost)) · Rev \(money(row.revenue))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(row.qty) sold")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            stats = results
+        } catch {
+            stats = []; errorMessage = error.localizedDescription
+        }
+        loading = false
+    }
+}
+
+// MARK: - Listing Stats
+
+private struct ListingStatsView: View {
+    enum Scope: String, CaseIterable, Identifiable {
+        case week, month, year, all
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .week:  return "Week"
+            case .month: return "Month"
+            case .year:  return "Year"
+            case .all:   return "All"
             }
         }
     }
 
-    // MARK: - Listing stats breakdown
+    @State private var scope: Scope = .week
+    @State private var year: Int = Calendar.current.component(.year, from: Date())
+    @State private var month: Int = Calendar.current.component(.month, from: Date())
+    @State private var week: Int = {
+        Calendar(identifier: .iso8601).component(.weekOfYear, from: Date())
+    }()
+    @State private var listingStats: [AoBClient.ListingStat] = []
+    @State private var loading = false
+    @State private var errorMessage: String?
 
-    private var listingStatsBreakdown: some View {
+    private let monthSymbols = DateFormatter().standaloneMonthSymbols ?? []
+    private let currentYear = Calendar.current.component(.year, from: Date())
+    private var yearRange: [Int] { Array((currentYear - 5)...currentYear).reversed() }
+    private var weekRange: [Int] { Array(1...53) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                scopePicker
+                scopeDetail
+
+                if loading {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+                } else if let err = errorMessage {
+                    errorCard(err)
+                } else {
+                    listingBreakdown
+                }
+            }
+            .padding(16)
+        }
+        .task(id: scopeKey) { await load() }
+        .refreshable { await load() }
+    }
+
+    private var scopeKey: String {
+        switch scope {
+        case .all:   return "all"
+        case .year:  return "year-\(year)"
+        case .month: return "month-\(year)-\(month)"
+        case .week:  return "week-\(year)-\(week)"
+        }
+    }
+
+    // MARK: Scope controls
+
+    private var scopePicker: some View {
+        Picker("Scope", selection: $scope) {
+            ForEach(Scope.allCases) { s in Text(s.label).tag(s) }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    @ViewBuilder
+    private var scopeDetail: some View {
+        switch scope {
+        case .all:
+            EmptyView()
+        case .year:
+            HStack {
+                Text("Year").foregroundStyle(.secondary)
+                Spacer()
+                Picker("Year", selection: $year) {
+                    ForEach(yearRange, id: \.self) { y in Text(String(y)).tag(y) }
+                }
+                .pickerStyle(.menu)
+            }
+        case .month:
+            HStack(spacing: 12) {
+                Picker("Year", selection: $year) {
+                    ForEach(yearRange, id: \.self) { y in Text(String(y)).tag(y) }
+                }
+                .pickerStyle(.menu)
+                Picker("Month", selection: $month) {
+                    ForEach(1...12, id: \.self) { m in
+                        Text(monthSymbols.indices.contains(m - 1) ? monthSymbols[m - 1] : "\(m)").tag(m)
+                    }
+                }
+                .pickerStyle(.menu)
+                Spacer()
+            }
+        case .week:
+            HStack(spacing: 12) {
+                Picker("Year", selection: $year) {
+                    ForEach(yearRange, id: \.self) { y in Text(String(y)).tag(y) }
+                }
+                .pickerStyle(.menu)
+                Picker("Week", selection: $week) {
+                    ForEach(weekRange, id: \.self) { w in Text("Week \(w)").tag(w) }
+                }
+                .pickerStyle(.menu)
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: Breakdown
+
+    private var listingBreakdown: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("LISTINGS BY LISTER")
                 .font(.custom("Inconsolata-Bold", size: 11))
-                .tracking(2)
-                .foregroundStyle(.secondary)
+                .tracking(2).foregroundStyle(.secondary)
 
             if listingStats.isEmpty {
                 Text("No listing data for this period.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary)
             } else {
                 let maxQty = listingStats.map(\.qtyListed).max() ?? 1
                 VStack(spacing: 10) {
@@ -601,16 +682,13 @@ struct StatsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text(row.lister.uppercased())
-                                    .font(.custom("Inconsolata-Bold", size: 13))
-                                    .tracking(1)
+                                    .font(.custom("Inconsolata-Bold", size: 13)).tracking(1)
                                 Spacer()
                                 Text("\(row.qtyListed)")
-                                    .font(.custom("Inconsolata-Bold", size: 13))
-                                    .monospacedDigit()
+                                    .font(.custom("Inconsolata-Bold", size: 13)).monospacedDigit()
                             }
                             GeometryReader { geo in
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(.teal.opacity(0.5))
+                                RoundedRectangle(cornerRadius: 3).fill(.teal.opacity(0.5))
                                     .frame(width: geo.size.width * CGFloat(row.qtyListed) / CGFloat(maxQty),
                                            height: 6)
                             }
@@ -624,37 +702,41 @@ struct StatsView: View {
         .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - Load
+    // MARK: Helpers
+
+    @ViewBuilder
+    private func errorCard(_ msg: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Couldn't load stats", systemImage: "exclamationmark.triangle").font(.headline)
+            Text(msg).font(.caption).foregroundStyle(.secondary)
+            Button("Retry") { Task { await load() } }.buttonStyle(.bordered).padding(.top, 4)
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: Load
 
     @MainActor
     private func load() async {
-        loading = true
-        errorMessage = nil
-        selectedDate = nil
+        loading = true; errorMessage = nil
         do {
-            async let salesFetch: [AoBClient.SalesStat] = {
-                switch scope {
-                case .all:   return try await AoBClient.shared.fetchSalesStats()
-                case .year:  return try await AoBClient.shared.fetchSalesStats(year: year)
-                case .month: return try await AoBClient.shared.fetchSalesStats(year: year, month: month)
-                }
-            }()
-            async let listingFetch: [AoBClient.ListingStat] = {
-                switch scope {
-                case .all:   return (try? await AoBClient.shared.fetchListingStats()) ?? []
-                case .year:  return (try? await AoBClient.shared.fetchListingStats(year: year)) ?? []
-                case .month: return (try? await AoBClient.shared.fetchListingStats(year: year, month: month)) ?? []
-                }
-            }()
-            stats = try await salesFetch
-            listingStats = await listingFetch
+            let results: [AoBClient.ListingStat]
+            switch scope {
+            case .all:   results = try await AoBClient.shared.fetchListingStats()
+            case .year:  results = try await AoBClient.shared.fetchListingStats(year: year)
+            case .month: results = try await AoBClient.shared.fetchListingStats(year: year, month: month)
+            case .week:  results = try await AoBClient.shared.fetchListingStats(year: year, week: week)
+            }
+            listingStats = results
         } catch {
-            stats = []
-            errorMessage = error.localizedDescription
+            listingStats = []; errorMessage = error.localizedDescription
         }
         loading = false
     }
 }
+
+// MARK: - Shared private types
 
 private struct VenueRow: Identifiable {
     var id: String { venue }

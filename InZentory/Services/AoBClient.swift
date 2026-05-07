@@ -751,7 +751,7 @@ actor AoBClient {
     }
 
     /// GET /listing_stats[/year[/month]]
-    func fetchListingStats(year: Int? = nil, month: Int? = nil) async throws -> [ListingStat] {
+    func fetchListingStats(year: Int? = nil, month: Int? = nil, week: Int? = nil) async throws -> [ListingStat] {
         guard let creds = try? await SharedCredentialsService.shared.getAoBCredentials()
         else { throw AoBError.missingCredentials }
 
@@ -760,6 +760,9 @@ actor AoBClient {
             path += "/\(y)"
             if let m = month {
                 path += "/\(String(format: "%02d", m))"
+            }
+            if let w = week {
+                path += "?week=\(w)"
             }
         }
 
