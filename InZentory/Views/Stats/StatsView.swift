@@ -473,11 +473,20 @@ struct StatsView: View {
         let qty: Int
     }
 
+    private static let listerAliases: [String: String] = [
+        "evstover55@gmail.com": "Momsie"
+    ]
+
+    private func canonicalLister(_ raw: String) -> String {
+        Self.listerAliases[raw] ?? raw
+    }
+
     private var listerStatRows: [ListerStatRow] {
         var totals: [String: (revenue: Double, qty: Int)] = [:]
         for order in scopedOrders {
             for item in order.items {
-                guard let lister = item.lister, !lister.isEmpty else { continue }
+                guard let raw = item.lister, !raw.isEmpty else { continue }
+                let lister = canonicalLister(raw)
                 let price = Double(item.price ?? "") ?? 0
                 let qty = item.qty ?? 0
                 var entry = totals[lister] ?? (0, 0)
