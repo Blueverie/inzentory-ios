@@ -583,6 +583,25 @@ private struct ListingStatsView: View {
     private let currentYear = Calendar.current.component(.year, from: Date())
     private var yearRange: [Int] { Array((currentYear - 5)...currentYear).reversed() }
     private var weekRange: [Int] { Array(1...53) }
+    private static let listerAliases: [String: String] = [
+        "evstover55@gmail.com": "Momsie"
+    ]
+
+    private func canonicalLister(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.listerAliases[trimmed.lowercased()] ?? trimmed
+    }
+
+    private var mergedListingStats: [AoBClient.ListingStat] {
+        var totals: [String: Int] = [:]
+        for row in listingStats {
+            let lister = canonicalLister(row.lister)
+            totals[lister, default: 0] += row.qtyListed
+        }
+        return totals
+            .map { AoBClient.ListingStat(lister: $0.key, qtyListed: $0.value) }
+            .sorted { $0.qtyListed > $1.qtyListed }
+    }
 
     var body: some View {
         ScrollView {
@@ -668,18 +687,19 @@ private struct ListingStatsView: View {
     // MARK: Breakdown
 
     private var listingBreakdown: some View {
+        let rows = mergedListingStats
         VStack(alignment: .leading, spacing: 8) {
             Text("LISTINGS BY LISTER")
                 .font(.custom("Inconsolata-Bold", size: 11))
                 .tracking(2).foregroundStyle(.secondary)
 
-            if listingStats.isEmpty {
+            if rows.isEmpty {
                 Text("No listing data for this period.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                let maxQty = listingStats.map(\.qtyListed).max() ?? 1
+                let maxQty = rows.map(\.qtyListed).max() ?? 1
                 VStack(spacing: 10) {
-                    ForEach(listingStats) { row in
+                    ForEach(rows) { row in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text(row.lister.uppercased())
