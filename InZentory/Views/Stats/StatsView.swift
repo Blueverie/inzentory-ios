@@ -373,6 +373,41 @@ struct StatsView: View {
         .padding(40)
     }
 
+    // MARK: - Scoped order filtering
+
+    private static let orderDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    private var scopedOrders: [AoBClient.AoBOrder] {
+        let all = ordersService.ordersByList.values.flatMap { $0 }
+        switch scope {
+        case .all:
+            return all
+        case .year:
+            let cal = Calendar(identifier: .gregorian)
+            guard let start = cal.date(from: DateComponents(year: year, month: 1, day: 1)),
+                  let end   = cal.date(byAdding: .year, value: 1, to: start)
+            else { return all }
+            return all.filter { inRange($0.orderDate, start: start, end: end) }
+        case .month:
+            let cal = Calendar(identifier: .gregorian)
+            guard let start = cal.date(from: DateComponents(year: year, month: month, day: 1)),
+                  let end   = cal.date(byAdding: .month, value: 1, to: start)
+            else { return all }
+            return all.filter { inRange($0.orderDate, start: start, end: end) }
+        }
+    }
+
+    private func inRange(_ dateStr: String?, start: Date, end: Date) -> Bool {
+        guard let s = dateStr,
+              let d = Self.orderDateFormatter.date(from: s) else { return false }
+        return d >= start && d < end
+    }
+
     // MARK: - Source breakdown
 
     private struct SourceStatRow {
@@ -382,21 +417,18 @@ struct StatsView: View {
     }
 
     private var sourceStatRows: [SourceStatRow] {
-        // Aggregate revenue from currently cached orders (across all sublists) by item.source.
         var revenueByName: [String: (revenue: Double, qty: Int)] = [:]
-        for (_, orders) in ordersService.ordersByList {
-            for order in orders {
-                for item in order.items {
-                    guard let s = item.source, !s.isEmpty else { continue }
-                    let price = Double(item.price ?? "") ?? 0
-                    let qty = item.qty ?? 0
-                    let lineTotal = price * Double(qty)
-                    var entry = revenueByName[s] ?? (0, 0)
-                    entry.revenue += lineTotal
-                    entry.qty += qty
-                    revenueByName[s] = entry
-                }
+        for order in scopedOrders {
+            for item in order.items {
+                guard let s = item.source, !s.isEmpty else { continue }
+                let price = Double(item.price ?? "") ?? 0
+                let qty = item.qty ?? 0
+                var entry = revenueByName[s] ?? (0, 0)
+                entry.revenue += price * Double(qty)
+                entry.qty += qty
+                revenueByName[s] = entry
             }
+        }
         }
         return sourceRecords
             .filter { $0.name != "Backlog" }
@@ -443,17 +475,15 @@ struct StatsView: View {
 
     private var listerStatRows: [ListerStatRow] {
         var totals: [String: (revenue: Double, qty: Int)] = [:]
-        for (_, orders) in ordersService.ordersByList {
-            for order in orders {
-                for item in order.items {
-                    guard let lister = item.lister, !lister.isEmpty else { continue }
-                    let price = Double(item.price ?? "") ?? 0
-                    let qty = item.qty ?? 0
-                    var entry = totals[lister] ?? (0, 0)
-                    entry.revenue += price * Double(qty)
-                    entry.qty += qty
-                    totals[lister] = entry
-                }
+        for order in scopedOrders {
+            for item in order.items {
+                guard let lister = item.lister, !lister.isEmpty else { continue }
+                let price = Double(item.price ?? "") ?? 0
+                let qty = item.qty ?? 0
+                var entry = totals[lister] ?? (0, 0)
+                entry.revenue += price * Double(qty)
+                entry.qty += qty
+                totals[lister] = entry
             }
         }
         return totals
@@ -545,15 +575,18 @@ struct StatsView: View {
 
     // MARK: - Listing stats breakdown
 
-    @ViewBuilder
     private var listingStatsBreakdown: some View {
-        if !listingStats.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("LISTINGS BY LISTER")
-                    .font(.custom("Inconsolata-Bold", size: 11))
-                    .tracking(2)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("LISTINGS BY LISTER")
+                .font(.custom("Inconsolata-Bold", size: 11))
+                .tracking(2)
+                .foregroundStyle(.secondary)
 
+            if listingStats.isEmpty {
+                Text("No listing data for this period.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
                 let maxQty = listingStats.map(\.qtyListed).max() ?? 1
                 VStack(spacing: 10) {
                     ForEach(listingStats) { row in
@@ -578,9 +611,9 @@ struct StatsView: View {
                     }
                 }
             }
-            .padding(12)
-            .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
         }
+        .padding(12)
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Load
