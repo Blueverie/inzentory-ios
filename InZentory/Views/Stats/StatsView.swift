@@ -395,16 +395,18 @@ struct StatsView: View {
                 }
             }
         }
-        return sourceRecords.map { rec in
-            let r = revenueByName[rec.name] ?? (0, 0)
-            return SourceStatRow(source: rec, revenue: r.revenue, qty: r.qty)
-        }
-        .sorted { ($0.revenue - $0.source.totalCost) > ($1.revenue - $1.source.totalCost) }
+        return sourceRecords
+            .filter { $0.name != "Backlog" }
+            .map { rec in
+                let r = revenueByName[rec.name] ?? (0, 0)
+                return SourceStatRow(source: rec, revenue: r.revenue, qty: r.qty)
+            }
+            .sorted { ($0.revenue - $0.source.totalCost) > ($1.revenue - $1.source.totalCost) }
     }
 
     @ViewBuilder
     private var sourceBreakdown: some View {
-        if sourceRecords.isEmpty {
+        if sourceStatRows.isEmpty {
             EmptyView()
         } else {
             VStack(alignment: .leading, spacing: 8) {
