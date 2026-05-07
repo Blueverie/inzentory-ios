@@ -267,6 +267,7 @@ struct ScoutView: View {
     }
 
     private func lookup(_ barcode: String, fromTitleSearch: Bool = false) async {
+        let barcode = AuditEngine.normalizeBarcode(barcode)
         guard !isLoading else { return }
         isScannerActive = false
         isLoading       = true

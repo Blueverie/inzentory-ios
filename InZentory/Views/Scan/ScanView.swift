@@ -191,6 +191,7 @@ struct ScanView: View {
     }
 
     private func lookup(_ barcode: String) async {
+        let barcode = AuditEngine.normalizeBarcode(barcode)
         guard !isLoading else { return }
         isScannerActive = false
         isLoading = true

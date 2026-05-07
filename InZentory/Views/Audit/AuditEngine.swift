@@ -84,6 +84,15 @@ struct AuditItemResult: Identifiable, Sendable {
 
     // MARK: - Input Classification
 
+    /// Strips a textbook-specific "290" prefix from 13-digit barcodes.
+    /// Some publishers encode a 10-digit ISBN as a 13-digit barcode by
+    /// prepending "290"; dropping it yields the real ISBN-10.
+    static func normalizeBarcode(_ raw: String) -> String {
+        let s = raw.trimmingCharacters(in: .whitespaces)
+        guard s.count == 13, s.hasPrefix("290") else { return s }
+        return String(s.dropFirst(3))
+    }
+
     /// Maps raw barcode / manual input → the correct AoB item query key + value.
     ///
     /// Rules (digit-count based):
@@ -92,7 +101,7 @@ struct AuditItemResult: Identifiable, Sendable {
     /// - 12+ digits (not 978-ISBN13) → query by `upc`
     /// - Anything else               → query by `sku`
     static func classifyInput(_ raw: String) -> (key: String, value: String) {
-        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        let trimmed = normalizeBarcode(raw)
         let digits  = trimmed.filter(\.isNumber)
 
         if digits.count == 13, digits.hasPrefix("978") {
