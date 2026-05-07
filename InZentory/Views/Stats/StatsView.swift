@@ -55,6 +55,7 @@ struct StatsView: View {
                 }
 
                 sourceBreakdown
+                listerBreakdown
             }
             .padding(16)
         }
@@ -422,6 +423,82 @@ struct StatsView: View {
                 VStack(spacing: 10) {
                     ForEach(sourceStatRows, id: \.source.id) { row in
                         sourceRow(row)
+                    }
+                }
+            }
+            .padding(12)
+            .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    // MARK: - Lister breakdown
+
+    private struct ListerStatRow {
+        let name: String
+        let revenue: Double
+        let qty: Int
+    }
+
+    private var listerStatRows: [ListerStatRow] {
+        var totals: [String: (revenue: Double, qty: Int)] = [:]
+        for (_, orders) in ordersService.ordersByList {
+            for order in orders {
+                for item in order.items {
+                    guard let lister = item.lister, !lister.isEmpty else { continue }
+                    let price = Double(item.price ?? "") ?? 0
+                    let qty = item.qty ?? 0
+                    var entry = totals[lister] ?? (0, 0)
+                    entry.revenue += price * Double(qty)
+                    entry.qty += qty
+                    totals[lister] = entry
+                }
+            }
+        }
+        return totals
+            .map { ListerStatRow(name: $0.key, revenue: $0.value.revenue, qty: $0.value.qty) }
+            .sorted { $0.revenue > $1.revenue }
+    }
+
+    @ViewBuilder
+    private var listerBreakdown: some View {
+        let rows = listerStatRows
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("BY LISTER")
+                    .font(.custom("Inconsolata-Bold", size: 11))
+                    .tracking(2)
+                    .foregroundStyle(.secondary)
+
+                Text("Revenue from currently active orders, attributed by p2.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                let maxRevenue = rows.map(\.revenue).max() ?? 1
+                VStack(spacing: 10) {
+                    ForEach(rows, id: \.name) { row in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(row.name.uppercased())
+                                    .font(.custom("Inconsolata-Bold", size: 13))
+                                    .tracking(1)
+                                Spacer()
+                                Text(money(row.revenue))
+                                    .font(.custom("Inconsolata-Bold", size: 13))
+                                    .monospacedDigit()
+                            }
+                            GeometryReader { geo in
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(.purple.opacity(0.5))
+                                    .frame(width: geo.size.width * CGFloat(row.revenue / maxRevenue),
+                                           height: 6)
+                            }
+                            .frame(height: 6)
+                            HStack {
+                                Text("\(row.qty) sold")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
             }

@@ -198,6 +198,7 @@ actor AoBClient {
         let source: String?
         let location: String?
         let media: String?
+        let lister: String?     // p2 — InZentory username of the lister
     }
 
     struct AoBOrder: Identifiable, Sendable {
@@ -704,7 +705,8 @@ actor AoBClient {
                     imageURL: d["image"] as? String,
                     source: d["source"] as? String,
                     location: d["location"] as? String,
-                    media: d["media"] as? String
+                    media: d["media"] as? String,
+                    lister: d["p2"] as? String
                 )
             }
 
