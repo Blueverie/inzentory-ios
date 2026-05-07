@@ -429,7 +429,6 @@ struct StatsView: View {
                 revenueByName[s] = entry
             }
         }
-        }
         return sourceRecords
             .filter { $0.name != "Backlog" }
             .map { rec in
