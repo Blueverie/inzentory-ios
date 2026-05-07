@@ -706,7 +706,7 @@ private struct ListingStatsView: View {
 
     private var listingBreakdown: some View {
         let rows = mergedListingStats
-        VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 8) {
             Text("LISTINGS BY LISTER")
                 .font(.custom("Inconsolata-Bold", size: 11))
                 .tracking(2).foregroundStyle(.secondary)
