@@ -296,7 +296,6 @@ struct ListFormView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if itemType == .media {
-                        lookupBar.padding(.horizontal)
                         if let cat = catData { VerdictBanner(cat: cat).padding(.horizontal) }
                     }
                     photoStrip
@@ -308,6 +307,14 @@ struct ListFormView: View {
                 .padding(.bottom, 8)
             }
             .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .top) {
+                if itemType == .media {
+                    lookupBar
+                        .padding(.horizontal)
+                        .padding(.vertical, 10)
+                        .background(.bar)
+                }
+            }
             .safeAreaInset(edge: .bottom) {
                 actionButtons
                     .padding(.horizontal)
