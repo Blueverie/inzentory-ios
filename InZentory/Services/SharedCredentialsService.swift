@@ -53,8 +53,12 @@ actor SharedCredentialsService {
     // MARK: - Lifecycle
 
     /// Call after a successful login or bootstrap. Fetches all credentials in parallel.
-    func configure(token: String) async {
+    /// Returns false when the backend rejected the bearer token (HTTP 401) — e.g. it
+    /// expired or the server's SECRET_KEY changed — so the caller can force a fresh login.
+    @discardableResult
+    func configure(token: String) async -> Bool {
         lastError = nil
+        var tokenRejected = false
         async let aobTask      = fetch("aob",       token: token)
         async let spacesTask   = fetch("do_spaces", token: token)
         async let printTask    = fetch("printnode", token: token)
@@ -68,6 +72,7 @@ actor SharedCredentialsService {
                 lastError = "aob: missing username or password fields"
             }
         } catch {
+            if Self.isUnauthorized(error) { tokenRejected = true }
             lastError = "aob: \(error.localizedDescription)"
         }
 
@@ -77,6 +82,7 @@ actor SharedCredentialsService {
                 spaces = SpacesCredentials(key: k, secret: s)
             }
         } catch {
+            if Self.isUnauthorized(error) { tokenRejected = true }
             // Spaces failure is non-fatal (hardcoded fallback exists)
         }
 
@@ -84,6 +90,7 @@ actor SharedCredentialsService {
             let d = try await printTask
             if let k = d["key"] { printNodeKey = k }
         } catch {
+            if Self.isUnauthorized(error) { tokenRejected = true }
             // PrintNode failure is non-fatal (user can still list without printing)
         }
 
@@ -91,8 +98,16 @@ actor SharedCredentialsService {
             let d = try await easyPostTask
             if let k = d["key"] { easyPostKey = k }
         } catch {
+            if Self.isUnauthorized(error) { tokenRejected = true }
             // EasyPost failure is non-fatal
         }
+
+        return !tokenRejected
+    }
+
+    private static func isUnauthorized(_ error: Error) -> Bool {
+        if case CredError.httpError(401, _) = error { return true }
+        return false
     }
 
     func clear() {

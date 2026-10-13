@@ -44,7 +44,14 @@ import LocalAuthentication
             isAuthenticated = false
             return
         }
-        await SharedCredentialsService.shared.configure(token: token)
+        // A stored token the backend no longer accepts (expired after 90 days, or the
+        // server's SECRET_KEY changed) would otherwise leave every credential fetch
+        // failing with 401 "Could not validate credentials" — send the user to login.
+        guard await SharedCredentialsService.shared.configure(token: token) else {
+            logout()
+            errorMessage = "Your session expired. Please sign in again."
+            return
+        }
         if biometricsAvailable && !isWithinGracePeriod {
             await authenticateWithBiometrics()
         } else {
